@@ -1,0 +1,12 @@
+# Core RL and simulation
+gymnasium
+pybullet
+stable-baselines3[extra]
+
+# Logging & visualization
+tensorboard
+torch
+numpy
+
+# Optional
+matplotlib
