@@ -26,12 +26,12 @@ logger = logging.getLogger(__name__)
 # -------------------------------
 # Create the environment
 # -------------------------------
-def create_env(env_id=DoubleInvertedPendulumEnv):
-    return Monitor(gym.make(env_id))
+def create_env(env_class=DoubleInvertedPendulumEnv, render=False):
+    return Monitor(env_class(render=render))
 
 
-train_env = create_env()
-eval_env = create_env()
+train_env = create_env(render=True)
+eval_env = create_env(render=False)
 
 
 # Custom callback to stop training after a certain number of timesteps
@@ -55,7 +55,7 @@ class TensorboardCallback(BaseCallback):
     def __init__(self, eval_freq=500, verbose=0):
         super().__init__(verbose)
         self.eval_freq = eval_freq
-        self.writer = None
+        self.writer = None  # Will be initialized in _on_training_start
 
     def _on_training_start(self) -> None:
         log_dir = os.path.join(self.logger.dir or "./logs", "custom")
@@ -64,6 +64,10 @@ class TensorboardCallback(BaseCallback):
         logger.info(f"TensorBoard logs will be saved to {log_dir}")
 
     def _on_step(self) -> bool:
+        if self.writer is None:
+            logger.error("TensorBoard writer is not initialized.")
+            return False
+
         if self.n_calls % self.eval_freq == 0:
             self.logger.record("custom/num_timesteps", self.num_timesteps)
 
@@ -78,8 +82,9 @@ class TensorboardCallback(BaseCallback):
         return True
 
     def _on_training_end(self) -> None:
-        self.writer.close()
-        logger.info("TensorBoard writer closed.")
+        if self.writer is not None:
+            self.writer.close()
+            logger.info("TensorBoard writer closed.")
 
 
 # -------------------------------
@@ -98,7 +103,7 @@ def create_callback(eval_env, total_timesteps):
 
     stop_callback = StopTrainingCallback(stop_timesteps=total_timesteps, verbose=1)
     tensorboard_callback = TensorboardCallback(eval_freq=500, verbose=1)
-    return eval_callback, stop_callback, tensorboard_callback
+    return [eval_callback, stop_callback, tensorboard_callback]
 
 
 # -------------------------------
@@ -127,7 +132,7 @@ def train_model(env, total_timesteps, tb_log_name):
 # Main Execution
 # -------------------------------
 if __name__ == "__main__":
-    total_timesteps = 10000
+    total_timesteps = 100000
     model = train_model(train_env, total_timesteps, "PPO_DIP_1")
 
     # Load the best model and continue training

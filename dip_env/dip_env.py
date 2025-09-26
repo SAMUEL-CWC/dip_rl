@@ -18,23 +18,27 @@ class DoubleInvertedPendulumEnv(gym.Env):
             self.physics_client = p.connect(p.DIRECT)
 
         p.setAdditionalSearchPath(pybullet_data.getDataPath())
-        p.setGravity(0, 0, -9.81)
+        p.setGravity(0, -9.81, 0)
 
         # Load model
         self.model_path = os.path.join(
             os.path.dirname(__file__),
-            "/home/weybar/dip_ros2_ws/src/dip_sim/urdf/double_pendulum.urdf",
+            "/home/weybar/dip_rl/models/double_pendulum.urdf",
         )
         self.pendulum_id = p.loadURDF(self.model_path, [0, 0, 0.2])
 
         # Action and observation spaces
-        self.action_space = spaces.Box(low=-5.0, high=5.0, shape=(1,), dtype=np.float32)
-        obs_high = np.array([np.pi, np.pi, 10.0, 10.0])
+        self.action_space = spaces.Box(
+            low=np.array([-5.0]), high=np.array([5.0]), dtype=np.float32
+        )
+        obs_high = np.array([np.pi, np.pi, 10.0, 10.0], dtype=np.float32)
         self.observation_space = spaces.Box(-obs_high, obs_high, dtype=np.float32)
 
-    def reset(self):
+    def reset(self, *, seed=None, options=None):
+        super().reset(seed=seed)
         self.current_step = 0
         p.resetSimulation()
+        p.setAdditionalSearchPath(pybullet_data.getDataPath())
         p.setGravity(0, 0, -9.81)
         self.pendulum_id = p.loadURDF(self.model_path, [0, 0, 0.2])
         p.setJointMotorControlArray(
@@ -46,7 +50,9 @@ class DoubleInvertedPendulumEnv(gym.Env):
         p.resetJointState(self.pendulum_id, 0, theta1)
         p.resetJointState(self.pendulum_id, 1, theta2)
 
-        return self._get_obs()
+        obs = self._get_obs()
+        info = {"reset_info": "Environment reset with random initial state"}
+        return obs, info
 
     def step(self, action):
         self.current_step += 1
@@ -63,7 +69,7 @@ class DoubleInvertedPendulumEnv(gym.Env):
 
         reward = self._compute_reward(obs)
 
-        terminated = bool(abs(theta1) > np.pi / 2 or abs(theta2) > np.pi / 2)
+        terminated = bool(abs(theta1) > np.pi or abs(theta2) > np.pi)
 
         truncated = self.current_step >= self.max_steps
 
