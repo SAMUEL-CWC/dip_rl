@@ -9,15 +9,12 @@ logs/
 *.log
 *.tfevents.*
 
-# Models
-models/
-*.zip
-*.pt
-*.onnx
-
 # Jupyter
 .ipynb_checkpoints/
 
 # VSCode or IDE config
 .vscode/
 .idea/
+
+# Environments
+.envrc
