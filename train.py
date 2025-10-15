@@ -34,7 +34,6 @@ DEVICE = os.environ.get("DEVICE", "cpu")
 def create_env(env_class=DoubleInvertedPendulumEnv, render=False):
     return Monitor(env_class(render=render))
 
-
 train_env = create_env(render=True)
 eval_env = create_env(render=False)
 
