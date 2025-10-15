@@ -4,6 +4,7 @@ import numpy as np
 import pybullet as p
 import pybullet_data
 import os
+import random
 
 
 class DoubleInvertedPendulumEnv(gym.Env):
@@ -18,23 +19,72 @@ class DoubleInvertedPendulumEnv(gym.Env):
             self.physics_client = p.connect(p.DIRECT)
 
         p.setAdditionalSearchPath(pybullet_data.getDataPath())
-        p.setGravity(0, 0, -9.81)
+        p.setGravity(0, -9.81, 0)
 
         # Load model
         self.model_path = os.path.join(
             os.path.dirname(__file__),
-            "/home/weybar/dip_ros2_ws/src/dip_sim/urdf/double_pendulum.urdf",
+            "..",  # go up one directory from dip_env/
+            "models",
+            "double_pendulum.urdf",
         )
+        self.model_path = os.path.abspath(self.model_path)
+
         self.pendulum_id = p.loadURDF(self.model_path, [0, 0, 0.2])
 
         # Action and observation spaces
-        self.action_space = spaces.Box(low=-5.0, high=5.0, shape=(1,), dtype=np.float32)
-        obs_high = np.array([np.pi, np.pi, 10.0, 10.0])
+        self.action_space = spaces.Box(
+            low=np.array([-5.0]), high=np.array([5.0]), dtype=np.float32
+        )
+        obs_high = np.array([np.pi, np.pi, 10.0, 10.0], dtype=np.float32)
         self.observation_space = spaces.Box(-obs_high, obs_high, dtype=np.float32)
 
-    def reset(self):
+    def seed(self, seed=None):
+        # Set the seed for reproducibility. Be permissive about input types
+        # and ensure the seed is an integer in [0, 2**32 - 1].
+        if seed is None:
+            normalized = None
+        else:
+            # If seed is array-like (e.g. numpy scalar/array or list/tuple),
+            # try to extract a single integer value.
+            try:
+                # numpy types have item() method; plain ints will pass through
+                if hasattr(seed, "item"):
+                    seed_val = seed.item()
+                else:
+                    seed_val = seed
+                seed_int = int(seed_val)
+            except Exception:
+                raise ValueError(f"Invalid seed value: {seed!r}")
+
+            # Coerce into valid uint32 range
+            normalized = seed_int % (2**32)
+
+        self.seed_value = normalized
+        self.np_random, used_seed = gym.utils.seeding.np_random(normalized)
+        # gym.utils.seeding.np_random may return a very large int (especially
+        # when normalized is None). Numpy's legacy RandomState requires a
+        # seed in [0, 2**32 - 1], so coerce it into that range before using.
+        if used_seed is None:
+            return [None]
+
+        used_seed_int = int(used_seed)
+        used_seed32 = used_seed_int % (2**32)
+        np.random.seed(used_seed32)
+        random.seed(used_seed32)
+        # Keep a stable python int for self.seed_value so super().reset gets
+        # a native int in the acceptable range.
+        self.seed_value = used_seed32
+        return [used_seed32]
+
+    def reset(self, *, seed=None, options=None):
+        # Normalize and set the seed first so that gymnasium receives a
+        # native Python int or None (gym validates the seed type/value).
+        self.seed(seed)
+        super().reset(seed=self.seed_value)
         self.current_step = 0
         p.resetSimulation()
+        p.setAdditionalSearchPath(pybullet_data.getDataPath())
         p.setGravity(0, 0, -9.81)
         self.pendulum_id = p.loadURDF(self.model_path, [0, 0, 0.2])
         p.setJointMotorControlArray(
@@ -46,7 +96,9 @@ class DoubleInvertedPendulumEnv(gym.Env):
         p.resetJointState(self.pendulum_id, 0, theta1)
         p.resetJointState(self.pendulum_id, 1, theta2)
 
-        return self._get_obs()
+        obs = self._get_obs()
+        info = {"reset_info": "Environment reset with random initial state"}
+        return obs, info
 
     def step(self, action):
         self.current_step += 1
@@ -63,7 +115,7 @@ class DoubleInvertedPendulumEnv(gym.Env):
 
         reward = self._compute_reward(obs)
 
-        terminated = bool(abs(theta1) > np.pi / 2 or abs(theta2) > np.pi / 2)
+        terminated = bool(abs(theta1) > np.pi or abs(theta2) > np.pi)
 
         truncated = self.current_step >= self.max_steps
 
